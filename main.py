@@ -10,8 +10,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Переменные окружения
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8948155468:AAGGnRuzXi0EqtnuY6K1O6_wvg8BFMz5dDY")
-PROXY_URL = os.getenv("PROXY_URL", "http://ryiutsiz:0zakv2546ezu@31.59.20.176:6754")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+PROXY_URL = os.getenv("PROXY_URL")
 
 # Настройки запросов через прокси
 PROXIES = {
