@@ -5,41 +5,48 @@ import requests
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
-# Логирование
+# Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Переменные окружения
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-PROXY_URL = os.getenv("PROXY_URL")
+# Санитаризация переменных окружения (удаляем лишние пробелы и \n)
+BOT_TOKEN = (os.getenv("BOT_TOKEN") or "").strip()
+PROXY_URL = (os.getenv("PROXY_URL") or "").strip()
 
-# Настройки запросов через прокси
-PROXIES = {
-    "http": PROXY_URL,
-    "https": PROXY_URL
-}
+# Проверка наличия токена
+if not BOT_TOKEN:
+    logger.error("ОШИБКА: Переменная BOT_TOKEN не найдена или пуста!")
+
+# Настройки прокси
+PROXIES = None
+if PROXY_URL:
+    logger.info(f"Используем прокси: {PROXY_URL}")
+    PROXIES = {
+        "http": PROXY_URL,
+        "https": PROXY_URL
+    }
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👋 Бот мониторинга матчей (83'-87' мин) запущен и работает 24/7!")
-
-async def monitor_matches(app: Application):
-    """Фоновая задача для проверки матчей каждые 60 секунд."""
-    while True:
-        try:
-            # Здесь будет логика запроса к API парсера
-            logger.info("Проверка матчей на 83-87 минутах...")
-        except Exception as e:
-            logger.error(f"Ошибка при мониторинге: {e}")
-        await asyncio.sleep(60)
-
-async def post_init(app: Application):
-    asyncio.create_task(monitor_matches(app))
+    await update.message.reply_text("Привет! Бот успешно запущен и работает!")
 
 def main():
-    app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
-    app.add_handler(CommandHandler("start", start))
+    if not BOT_TOKEN:
+        print("Ошибка: Токен бота отсутствует. Завершение работы.")
+        return
+
+    # Создаем объект приложения
+    builder = Application.builder().token(BOT_TOKEN)
     
-    logger.info("Бот запущен...")
+    # Если задан прокси, добавляем его в запросы
+    if PROXIES:
+        builder.request_kwargs({"proxies": PROXIES})
+
+    app = builder.build()
+
+    # Регистрируем команды
+    app.add_handler(CommandHandler("start", start))
+
+    print("Бот запущен и ожидает сообщений...")
     app.run_polling()
 
 if __name__ == "__main__":
