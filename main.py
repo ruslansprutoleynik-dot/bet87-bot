@@ -3,91 +3,83 @@ import os
 import time
 import logging
 import requests
-from telegram import Bot
+from threading import Thread
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # Настройка логирования
 logging.basicConfig(
-    format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
 )
-logger = logging.getLogger(__name__)
 
-# Получаем переменные окружения
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+# Токен и ID чата Telegram (берутся из переменных окружения Render)
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# Инициализация Telegram бота
-bot = Bot(token=TELEGRAM_TOKEN) if TELEGRAM_TOKEN else None
+# Память для уже отправленных сигналов (чтобы не слать дубликаты)
+sent_signals = set()
 
+# Исключаемые ключевые слова (молодежки, женщины, товарищеские матчи)
+EXCLUDED_KEYWORDS = [
+    "women", "жен", "u17",
+    "u18", "u19", "u20", "u21",
+    "u23", "reserve", "резерв",
+    "friendly", "товарищ",
+    "cup", "кубок", "pokal",
+    "amateur"
+]
+
+# --- Мини-сервер для удержания бота в бодрствующем состоянии на Render ---
+class KeepAliveHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(b"Bot is active and running!")
+
+    def log_message(self, format, *args):
+        pass
+
+def run_server():
+    server_address = ('0.0.0.0', 10000)
+    httpd = HTTPServer(server_address, KeepAliveHandler)
+    httpd.serve_forever()
+
+def keep_alive():
+    t = Thread(
+        target=run_server,
+        daemon=True
+    )
+    t.start()
 
 def send_telegram_message(text):
-  if not bot or not TELEGRAM_CHAT_ID:
-    logger.error("Telegram токен или Chat ID не заданы!")
-    return
-  try:
-    bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=text)
-  except Exception as e:
-    logger.error(f"Ошибка отправки сообщения в Telegram: {e}")
+    """Отправка уведомления в Telegram — канал или чат"""
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        logging.error("Не заданы TELEGRAM_BOT_TOKEN или TELEGRAM_CHAT_ID!")
+        return
 
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": text,
+        "parse_mode": "Markdown"
+    }
 
-def fetch_matches():
-  """Функция получения матчей (заглушка или ваш реальный API-запрос)"""
-  try:
-    # Пример структуры, которая может возвращаться.
-    # Если здесь прилетит некорректный элемент (например, чистая строка), защита ниже не даст боту упасть.
-    response = requests.get(
-        "https://api.example.com/matches", timeout=10
-    )  # Замените на ваш реальный URL
-    if response.status_code == 200:
-      return response.json()
-  except Exception as e:
-    logger.error(f"Ошибка запроса данных: {e}")
-  return []
-
-
-def analyze_matches():
-  logger.info("Начало цикла проверки матчей...")
-
-  # Получаем данные
-  data = fetch_matches()
-
-  # Защита: если данные пришли не в виде списка, приводим к пустому списку
-  if not isinstance(data, list):
-    data = []
-
-  logger.info(f"Получено матчей для анализа: {len(data)}")
-
-  for match in data:
-    # ГЛАВНАЯ ЗАЩИТА: проверяем, что элемент является словарем, а не строкой
-    if not isinstance(match, dict):
-      logger.warning(
-          f"Пропущен некорректный элемент данных (ожидался словарь, получено"
-          f" {type(match)}): {match}"
-      )
-      continue
-
-    # Безопасное извлечение данных через .get()
-    match_id = match.get("id", "Неизвестно")
-    home_team = match.get("home_team", "Хозяева")
-    away_team = match.get("away_team", "Гости")
-
-    # Логика анализа матча...
-    logger.info(f"Анализируем матч: {home_team} vs {away_team} (ID: {match_id})")
-
+    try:
+        response = requests.post(url, json=payload, timeout=10)
+        response.raise_for_status()
+    except Exception as e:
+        logging.error(f"Ошибка отправки в Telegram: {e}")
 
 def main():
-  logger.info("Бот успешно запущен на Render и готов к работе!")
-  send_telegram_message("🤖 Бот успешно запущен и начал мониторинг!")
+    logging.info("Бот запущен и мониторит матчи...")
+    
+    # Запускаем фоновый веб-сервер для Render
+    keep_alive()
 
-  while True:
-    try:
-      analyze_matches()
-    except Exception as e:
-      logger.error(f"Ошибка во время выполнения цикла: {e}")
-
-    logger.info("Пауза цикла 60 секунд...")
-    time.sleep(60)
-
+    while True:
+        # Здесь будет твоя основная логика парсинга/мониторинга
+        time.sleep(60)
 
 if __name__ == "__main__":
-  main()
- ⁠# update
+    main()
