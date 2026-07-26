@@ -1,35 +1,40 @@
-__ == "__main__":
-    main()import os
+
+import os
 import time
 import logging
 import requests
 from threading import Thread
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-# Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-# Токен и ID чата Telegram (берутся из переменных окружения Render)
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# Память для уже отправленных сигналов (чтобы не слать дубликаты)
 sent_signals = set()
 
-# Исключаемые ключевые слова (молодежки, женщины, товарищеские матчи)
 EXCLUDED_KEYWORDS = [
-    "women", "жен", "u17",
-    "u18", "u19", "u20", "u21",
-    "u23", "reserve", "резерв",
-    "friendly", "товарищ",
-    "cup", "кубок", "pokal",
+    "women",
+    "жен",
+    "u17",
+    "u18",
+    "u19",
+    "u20",
+    "u21",
+    "u23",
+    "reserve",
+    "резерв",
+    "friendly",
+    "товарищ",
+    "cup",
+    "кубок",
+    "pokal",
     "amateur"
 ]
 
-# --- Мини-сервер для удержания бота в бодрствующем состоянии на Render ---
 class KeepAliveHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -73,13 +78,10 @@ def send_telegram_message(text):
 
 def main():
     logging.info("Бот запущен и мониторит матчи...")
-    
-    # Запускаем фоновый веб-сервер для Render
     keep_alive()
 
     while True:
-        # Здесь будет твоя основная логика парсинга/мониторинга
         time.sleep(60)
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
