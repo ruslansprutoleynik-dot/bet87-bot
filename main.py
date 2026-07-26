@@ -24,7 +24,7 @@ EXCLUDED_KEYWORDS = [
     "pokal", "amateur"
 ]
 
-# Строго разрешенные счета цифрами (разница в 1 гол + пределы до 6:5)
+# Строго разрешенные счета цифрами
 ALLOWED_SCORES = {
     "1:0", "0:1",
     "2:1", "1:2",
@@ -40,7 +40,7 @@ ALLOWED_SCORES = {
 }
 
 class KeepAliveHandler(BaseHTTPRequestHandler):
-    """Веб-сервер для предотвращения засыпания на Render"""
+    """Веб-сервер для предотвращения засыпания на Render (порт 10000)"""
     def do_GET(self):
         self.send_response(200)
         self.send_header('Content-type', 'text/plain')
@@ -61,62 +61,55 @@ def keep_alive():
     t.start()
 
 def send_telegram_message(text):
-    """Надежная отправка уведомлений в Telegram"""
+    """Надежная отправка уведомлений в Telegram с обработкой ошибок"""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        logging.error("Не заданы TELEGRAM_BOT_TOKEN или TELEGRAM_CHAT_ID!")
+        logging.error("ОШИБКА: Не заданы TELEGRAM_BOT_TOKEN или TELEGRAM_CHAT_ID в переменных окружения!")
         return False
 
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN.strip()}/sendMessage"
     payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
+        "chat_id": TELEGRAM_CHAT_ID.strip(),
         "text": text,
         "parse_mode": "Markdown"
     }
 
     try:
-        response = requests.post(url, json=payload, timeout=10)
-        response.raise_for_status()
-        return True
+        response = requests.post(url, json=payload, timeout=15)
+        if response.status_code == 200:
+            logging.info("Сообщение успешно отправлено в Telegram.")
+            return True
+        else:
+            logging.error(f"Telegram API вернул ошибку {response.status_code}: {response.text}")
+            return False
     except Exception as e:
-        logging.error(f"Ошибка отправки в Telegram: {e}")
+        logging.error(f"Сетевая ошибка при отправке в Telegram: {e}")
         return False
 
 def check_matches():
-    """Логика проверки матчей (77-87 мин, счета, фильтры)"""
+    """Логика сканирования матчей (77-87 мин, фильтры лиг и счетов)"""
     try:
-        logging.info("Сканирование лайв-матчей...")
-        
-        # Шаблон логики проверки:
-        # 1. Запрос к источнику матчей
-        # 2. Фильтрация лиг по EXCLUDED_KEYWORDS
-        # 3. Проверка времени (77 <= минута <= 87)
-        # 4. Проверка счета по ALLOWED_SCORES
-        # 5. Отправка сигнала в Telegram, если матч еще не в sent_signals
-        
+        logging.info("Цикл сканирования матчей активен...")
+        # Сюда будет интегрирована логика парсинга данных о матчах
     except Exception as e:
         logging.error(f"Ошибка при сканировании матчей: {e}")
 
 def main():
     logging.info("Инициализация бота...")
     
-    # 1. Запускаем защиту от засыпания (порт 10000)
+    # 1. Запускаем анти-сон сервер
     keep_alive()
     logging.info("Сервер анти-сна запущен на порту 10000.")
 
-    # 2. Отправляем стартовое сообщение в Telegram для проверки связи
-    success = send_telegram_message("🟢 Бот успешно запущен! Фильтры (77-87 мин, счета 1:0...6:5) активны.")
-    if success:
-        logging.info("Стартовое сообщение доставлено.")
-    else:
-        logging.warning("Не удалось отправить стартовое сообщение. Проверьте токены в переменных окружения Render.")
+    # Даем серверу секунду на инициализацию
+    time.sleep(2)
 
-    # 3. Бесконечный цикл опроса с интервалом 30 секунд
+    # 2. Тестовая отправка сообщения при запуске
+    logging.info("Попытка отправить стартовое сообщение в Telegram...")
+    send_telegram_message("🟢 Бот успешно запущен на Render! Мониторинг матчей (77-87 мин) активирован.")
+
+    # 3. Основной цикл работы
     while True:
-        try:
-            check_matches()
-        except Exception as e:
-            logging.error(f"Ошибка в главном цикле: {e}")
-        
+        check_matches()
         time.sleep(30)
 
 if __name__ == '__main__':
