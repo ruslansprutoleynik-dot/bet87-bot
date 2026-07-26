@@ -1,5 +1,5 @@
-
-import os
+__ == "__main__":
+    main()import os
 import time
 import logging
 import requests
