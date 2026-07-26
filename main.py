@@ -58,16 +58,4 @@ def check_matches_loop():
             
             if match_found:
                 alert_text = f"🚨 <b>ВНИМАНИЕ! МАТЧ ПОДХОДИТ ПОД СТРАТЕГИЮ!</b>\n\n{match_info}"
-                send_telegram_message(alert_text)
-        except requests.exceptions.Timeout:
-            logging.warning("Предупреждение: Сервер статистики не ответил вовремя (таймаут). Идем дальше...")
-        except Exception as e:
-            logging.error(f"Ошибка в цикле сканирования: {e}")
-
-        time.sleep(60)
-
-if __name__ == "__main__":
-    logging.info("Запуск веб-сервера для удержания бодрствования (KeepAlive)...")
-    keep_alive()
-    
-    send_telegram_message("🟢 <b>Бот успешно
+                send_telegram_message(alert
