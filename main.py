@@ -70,6 +70,4 @@ if __name__ == "__main__":
     logging.info("Запуск веб-сервера для удержания бодрствования (KeepAlive)...")
     keep_alive()
     
-    send_telegram_message("🟢 <b>Бот успешно запущен и активирован!</b> Мониторинг матчей (77-87 мин) запущен в фоновом режиме. Ожидаем подходящие матчи...")
-    
-    check_matches_loop()
+    send_telegram_message("🟢 <b>Бот успешно
