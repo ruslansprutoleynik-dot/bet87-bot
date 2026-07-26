@@ -2,6 +2,8 @@ import os
 import time
 import requests
 import logging
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from threading import Thread
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -25,6 +27,28 @@ EXCLUDED_KEYWORDS = [
     "reserve", "резерв", "friendly", "товарищ", "cup", "кубок", "pokal"
 ]
 
+# --- HTTP Сервер для защиты от сна на Render (Anti-Sleep) ---
+class KeepAliveHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(b"Bot is alive and running!")
+        
+    def log_message(self, format, *args):
+        pass # Отключаем спам в логах, когда сервер проверяют на "сон"
+
+def run_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(('0.0.0.0', port), KeepAliveHandler)
+    server.serve_forever()
+
+def keep_alive():
+    t = Thread(target=run_server)
+    t.daemon = True
+    t.start()
+# -----------------------------------------------------------
+
 def send_telegram_message(text):
     """Отправка сообщения в Telegram"""
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -34,7 +58,8 @@ def send_telegram_message(text):
         "parse_mode": "HTML"
     }
     try:
-        requests.post(url, json=payload, timeout=10)
+        response = requests.post(url, json=payload, timeout=10)
+        response.raise_for_status() # Проверка успешности отправки
     except Exception as e:
         logging.error(f"Ошибка отправки в Telegram: {e}")
 
@@ -48,11 +73,16 @@ def is_valid_league(tournament_name, category_name):
 
 def check_score_condition(home_score, away_score):
     """Проверка счёта: разница в 1 мяч или 2:0 / 0:2"""
-    diff = abs(home_score - away_score)
-    if diff == 1:
-        return True
-    if (home_score == 2 and away_score == 0) or (home_score == 0 and away_score == 2):
-        return True
+    try:
+        home_score = int(home_score)
+        away_score = int(away_score)
+        diff = abs(home_score - away_score)
+        if diff == 1:
+            return True
+        if (home_score == 2 and away_score == 0) or (home_score == 0 and away_score == 2):
+            return True
+    except (TypeError, ValueError):
+        return False # Если счет пришел кривой, игнорируем матч
     return False
 
 def get_match_corners(event_id):
@@ -63,7 +93,6 @@ def get_match_corners(event_id):
         if response.status_code == 200:
             data = response.json()
             for group in data.get("statistics", []):
-                # Берем общую статистику за весь матч (ALL)
                 if group.get("period") == "ALL":
                     for item in group.get("groups", []):
                         for stat in item.get("statisticsItems", []):
@@ -72,14 +101,14 @@ def get_match_corners(event_id):
                                 away_corners = int(stat.get("away", 0))
                                 return home_corners, away_corners
     except Exception as e:
-        logging.error(f"Ошибка получения статистики угловых для ID {event_id}: {e}")
+        logging.error(f"Сбой получения угловых (ID {event_id}): {e}. Идем без них.")
     return None, None
 
 def scan_live_matches():
     """Сканирование лайв-матчей"""
     url = "https://api.sofascore.com/api/v3/events/live"
     try:
-        response = requests.get(url, headers=HEADERS, timeout=10)
+        response = requests.get(url, headers=HEADERS, timeout=15)
         if response.status_code != 200:
             logging.warning(f"SofaScore вернул статус {response.status_code}")
             return
@@ -93,7 +122,7 @@ def scan_live_matches():
                 continue
 
             event_id = event.get("id")
-            if event_id in sent_signals:
+            if not event_id or event_id in sent_signals:
                 continue
 
             # Получаем информацию о лиге
@@ -111,11 +140,10 @@ def scan_live_matches():
             if status.get("type") != "inprogress":
                 continue
 
-            # Минута определяется по времени начала второго тайма или полю minute
             time_info = event.get("time", {})
             minute = time_info.get("played")
 
-            if not minute or not (80 <= minute <= 87):
+            if not minute or not isinstance(minute, int) or not (80 <= minute <= 87):
                 continue
 
             # Проверка счёта
@@ -133,7 +161,7 @@ def scan_live_matches():
             away_team = event.get("awayTeam", {}).get("name", "Гости")
             
             home_corners, away_corners = get_match_corners(event_id)
-            corners_str = f"{home_corners + away_corners} ({home_corners} - {away_corners})" if home_corners is not None else "Нет данных"
+            corners_str = f"{home_corners + away_corners} ({home_corners} - {away_corners})" if home_corners is not None else "Нет данных (SofaScore не дал стату)"
 
             # Формируем сообщение
             message = (
@@ -150,14 +178,22 @@ def scan_live_matches():
             sent_signals.add(event_id)
             logging.info(f"Отправлен сигнал по матчу: {home_team} vs {away_team}")
 
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Ошибка соединения с SofaScore: {e}")
     except Exception as e:
-        logging.error(f"Ошибка при сканировании: {e}")
+        logging.error(f"Непредвиденная ошибка в основном цикле: {e}")
 
 if __name__ == "__main__":
+    logging.info("Запуск фонового веб-сервера для Render...")
+    keep_alive()  # Запускаем сервер, чтобы Render не убил бота
+    
     logging.info("Бот-сканер успешно запущен...")
-    # Оповещение в Telegram о старте
-    send_telegram_message("🚀 <b>Бот-сканер 87 запущен и сканирует лайв-матчи!</b>")
+    send_telegram_message("🚀 <b>Бот-сканер 87 запущен и сканирует лайв-матчи! Анти-сон активирован.</b>")
     
     while True:
-        scan_live_matches()
+        try:
+            scan_live_matches()
+        except Exception as e:
+            logging.error(f"Сбой в бесконечном цикле: {e}")
+        
         time.sleep(60)  # Сканируем каждую минуту
