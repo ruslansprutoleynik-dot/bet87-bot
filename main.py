@@ -2,55 +2,60 @@ import os
 import time
 import requests
 import logging
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from threading import Thread
 
+# Настройка логирования
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Токен бота и ID чата берутся из переменных окружения (Render)
+# Переменные окружения
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# Заголовки для имитации браузера при запросах к SofaScore
+# Усовершенствованные заголовки для обхода базовых фильтров
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept": "*/*",
-    "Referer": "https://www.sofascore.com/"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Origin": "https://www.sofascore.com",
+    "Referer": "https://www.sofascore.com/",
+    "Cache-Control": "no-cache"
 }
 
-# Множество для хранения ID матчей, по которым уже отправлен сигнал
+# Память для уже отправленных сигналов (чтобы не спамить повторно)
 sent_signals = set()
 
-# Слова-маркеры для исключения ненужных матчей
+# Исключаемые ключевые слова в названиях лиг/категорий
 EXCLUDED_KEYWORDS = [
     "women", "жен", "u17", "u18", "u19", "u20", "u21", "u23", 
     "reserve", "резерв", "friendly", "товарищ", "cup", "кубок", "pokal"
 ]
 
-# --- HTTP Сервер для защиты от сна на Render (Anti-Sleep) ---
+# --- Мини-сервер для предотвращения сна на Render ---
 class KeepAliveHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.send_header('Content-type', 'text/plain')
         self.end_headers()
-        self.wfile.write(b"Bot is alive and running!")
-        
+        self.wfile.write(b"Bot is active!")
     def log_message(self, format, *args):
-        pass # Отключаем спам в логах, когда сервер проверяют на "сон"
+        pass
 
 def run_server():
-    port = int(os.environ.get("PORT", 8080))
+    port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(('0.0.0.0', port), KeepAliveHandler)
     server.serve_forever()
 
 def keep_alive():
-    t = Thread(target=run_server)
-    t.daemon = True
+    t = Thread(target=run_server, daemon=True)
     t.start()
-# -----------------------------------------------------------
+# ----------------------------------------------------
 
 def send_telegram_message(text):
-    """Отправка сообщения в Telegram"""
+    """Отправка уведомления в Telegram"""
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        logging.error("Не заданы TELEGRAM_BOT_TOKEN или TELEGRAM_CHAT_ID!")
+        return
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
@@ -59,12 +64,12 @@ def send_telegram_message(text):
     }
     try:
         response = requests.post(url, json=payload, timeout=10)
-        response.raise_for_status() # Проверка успешности отправки
+        response.raise_for_status()
     except Exception as e:
         logging.error(f"Ошибка отправки в Telegram: {e}")
 
 def is_valid_league(tournament_name, category_name):
-    """Проверка лиги на фильтры (отсекаем молодёжки, женщин, кубки и т.д.)"""
+    """Фильтрация лиг (отсеиваем молодежки, кубки, женщин и т.д.)"""
     full_name = f"{category_name} {tournament_name}".lower()
     for kw in EXCLUDED_KEYWORDS:
         if kw in full_name:
@@ -72,21 +77,21 @@ def is_valid_league(tournament_name, category_name):
     return True
 
 def check_score_condition(home_score, away_score):
-    """Проверка счёта: разница в 1 мяч или 2:0 / 0:2"""
+    """Проверка стратегии по счёту: разница 1 гол либо 2:0 / 0:2"""
     try:
-        home_score = int(home_score)
-        away_score = int(away_score)
-        diff = abs(home_score - away_score)
+        h = int(home_score)
+        a = int(away_score)
+        diff = abs(h - a)
         if diff == 1:
             return True
-        if (home_score == 2 and away_score == 0) or (home_score == 0 and away_score == 2):
+        if (h == 2 and a == 0) | (h == 0 and a == 2):
             return True
     except (TypeError, ValueError):
-        return False # Если счет пришел кривой, игнорируем матч
+        return False
     return False
 
 def get_match_corners(event_id):
-    """Запрос статистики по угловым для конкретного матча"""
+    """Безопасное получение угловых матча (если недоступно — не падаем)"""
     url = f"https://api.sofascore.com/api/v3/event/{event_id}/statistics"
     try:
         response = requests.get(url, headers=HEADERS, timeout=10)
@@ -97,27 +102,28 @@ def get_match_corners(event_id):
                     for item in group.get("groups", []):
                         for stat in item.get("statisticsItems", []):
                             if stat.get("name") == "Corner kicks":
-                                home_corners = int(stat.get("home", 0))
-                                away_corners = int(stat.get("away", 0))
-                                return home_corners, away_corners
-    except Exception as e:
-        logging.error(f"Сбой получения угловых (ID {event_id}): {e}. Идем без них.")
+                                return int(stat.get("home", 0)), int(stat.get("away", 0))
+    except Exception:
+        pass
     return None, None
 
 def scan_live_matches():
-    """Сканирование лайв-матчей"""
+    """Основной цикл сканирования лайва"""
     url = "https://api.sofascore.com/api/v3/events/live"
     try:
         response = requests.get(url, headers=HEADERS, timeout=15)
+        
+        if response.status_code == 403:
+            logging.warning("SofaScore заблокировал запрос (403 Forbidden). Пропуск шага.")
+            return
         if response.status_code != 200:
-            logging.warning(f"SofaScore вернул статус {response.status_code}")
+            logging.warning(f"SofaScore вернул код ответа: {response.status_code}")
             return
 
         data = response.json()
         events = data.get("events", [])
 
         for event in events:
-            # Проверяем только футбол
             if event.get("sport", {}).get("slug") != "football":
                 continue
 
@@ -125,75 +131,70 @@ def scan_live_matches():
             if not event_id or event_id in sent_signals:
                 continue
 
-            # Получаем информацию о лиге
-            tournament = event.get("tournament", {})
-            category = tournament.get("category", {})
-            tournament_name = tournament.get("name", "")
-            category_name = category.get("name", "")
-
-            # Фильтр лиг
-            if not is_valid_league(tournament_name, category_name):
-                continue
-
-            # Проверка времени (минуты)
+            # Проверка статуса (только матчи в процессе)
             status = event.get("status", {})
             if status.get("type") != "inprogress":
                 continue
 
-            time_info = event.get("time", {})
-            minute = time_info.get("played")
-
-            if not minute or not isinstance(minute, int) or not (80 <= minute <= 87):
+            # Минута матча
+            minute = event.get("time", {}).get("played")
+            if not isinstance(minute, int) or not (80 <= minute <= 87):
                 continue
 
-            # Проверка счёта
+            # Информация о турнире и лиге
+            tournament = event.get("tournament", {})
+            category = tournament.get("category", {})
+            t_name = tournament.get("name", "")
+            c_name = category.get("name", "")
+
+            if not is_valid_league(t_name, c_name):
+                continue
+
+            # Счет матча
             home_score = event.get("homeScore", {}).get("current")
             away_score = event.get("awayScore", {}).get("current")
-
-            if home_score is None or away_score is None:
-                continue
 
             if not check_score_condition(home_score, away_score):
                 continue
 
-            # Если всё совпало — запрашиваем угловые
+            # Команды
             home_team = event.get("homeTeam", {}).get("name", "Хозяева")
             away_team = event.get("awayTeam", {}).get("name", "Гости")
-            
-            home_corners, away_corners = get_match_corners(event_id)
-            corners_str = f"{home_corners + away_corners} ({home_corners} - {away_corners})" if home_corners is not None else "Нет данных (SofaScore не дал стату)"
 
-            # Формируем сообщение
+            # Угловые (второстепенно)
+            h_corners, a_corners = get_match_corners(event_id)
+            if h_corners is not None and a_corners is not None:
+                corners_str = f"{h_corners + a_corners} ({h_corners} - {a_corners})"
+            else:
+                corners_str = "Нет данных"
+
+            # Формирование сигнала
             message = (
                 f"🔔 <b>СИГНАЛ: ТОТАЛ БОЛЬШЕ (УГЛОВЫЕ)</b>\n\n"
-                f"🏆 <b>Лига:</b> {category_name} — {tournament_name}\n"
+                f"🏆 <b>Лига:</b> {c_name} — {t_name}\n"
                 f"⚔️ <b>Матч:</b> {home_team} — {away_team}\n"
                 f"⏱ <b>Минута:</b> {minute}'\n"
                 f"⚽️ <b>Счёт:</b> {home_score} : {away_score}\n"
                 f"🚩 <b>Угловые:</b> {corners_str}\n\n"
-                f"⚡️ <i>Готовься ловить ТБ по угловым!</i>"
+                f"⚡️ <i>Лови момент по стратегии!</i>"
             )
 
             send_telegram_message(message)
             sent_signals.add(event_id)
-            logging.info(f"Отправлен сигнал по матчу: {home_team} vs {away_team}")
+            logging.info(f"Отправлен сигнал: {home_team} vs {away_team} ({minute}')")
 
     except requests.exceptions.RequestException as e:
-        logging.error(f"Ошибка соединения с SofaScore: {e}")
+        logging.error(f"Ошибка сети при запросе к SofaScore: {e}")
     except Exception as e:
-        logging.error(f"Непредвиденная ошибка в основном цикле: {e}")
+        logging.error(f"Непредвиденная ошибка сканирования: {e}")
 
 if __name__ == "__main__":
-    logging.info("Запуск фонового веб-сервера для Render...")
-    keep_alive()  # Запускаем сервер, чтобы Render не убил бота
+    logging.info("Инициализация веб-сервера анти-сна...")
+    keep_alive()
     
-    logging.info("Бот-сканер успешно запущен...")
-    send_telegram_message("🚀 <b>Бот-сканер 87 запущен и сканирует лайв-матчи! Анти-сон активирован.</b>")
+    logging.info("Бот запущен и готов к работе...")
+    send_telegram_message("🚀 <b>Бот успешно перезапущен и полностью готов к работе!</b>")
     
     while True:
-        try:
-            scan_live_matches()
-        except Exception as e:
-            logging.error(f"Сбой в бесконечном цикле: {e}")
-        
-        time.sleep(60)  # Сканируем каждую минуту
+        scan_live_matches()
+        time.sleep(60)
