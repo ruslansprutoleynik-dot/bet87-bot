@@ -41,8 +41,9 @@ def keep_alive():
 
 def send_telegram_message(text):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        logging.error("ОШИБКА: Не заданы TELEGRAM_BOT_TOKEN или TELEGRAM_CHAT_ID!")
-        return
+        logging.error("КРИТИЧЕСКАЯ ОШИБКА: Не заданы TELEGRAM_BOT_TOKEN или TELEGRAM_CHAT_ID в переменных окружения Render!")
+        return False
+    
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
@@ -50,9 +51,16 @@ def send_telegram_message(text):
         "parse_mode": "HTML"
     }
     try:
-        requests.post(url, json=payload, timeout=10)
+        response = requests.post(url, json=payload, timeout=10)
+        if response.status_code == 200:
+            logging.info("Сообщение в Telegram успешно отправлено.")
+            return True
+        else:
+            logging.error(f"Telegram вернул ошибку: {response.text}")
+            return False
     except Exception as e:
         logging.error(f"Ошибка отправки в Telegram: {e}")
+        return False
 
 def is_valid_league(league_name):
     l_lower = league_name.lower()
@@ -75,34 +83,34 @@ def check_score_condition(home_score, away_score):
     return False
 
 def scan_live_matches():
-    # Используем общедоступный легкий поток текущих футбольных матчей
     url = "https://raw.githubusercontent.com/openfootball/football.json/master/2025-26/en.1.json"
+    logging.info("Начало цикла проверки матчей...")
     
     try:
         response = requests.get(url, timeout=15)
         if response.status_code != 200:
+            logging.warning(f"GitHub отдал код ответа: {response.status_code}")
             return
 
         if not response.text or len(response.text.strip()) == 0:
+            logging.warning("Пустой ответ от источника данных.")
             return
 
         data = response.json()
         matches = data.get("matches", [])
+        logging.info(f"Получено матчей для анализа: {len(matches)}")
 
         for match in matches:
             match_id = str(match.get("date")) + str(match.get("team1"))
             if match_id in sent_signals:
                 continue
 
-            # Проверка статуса и счета (пример структуры открытых данных)
             score = match.get("score", {})
             ft = score.get("ft")
             if not ft or len(ft) != 2:
                 continue
 
             home_score, away_score = ft[0], ft[1]
-            
-            # Для демонстрации стабильности сканера
             home_team = match.get("team1", {}).get("name", "Хозяева")
             away_team = match.get("team2", {}).get("name", "Гости")
             league = data.get("name", "Premier League")
@@ -126,16 +134,22 @@ def scan_live_matches():
             logging.info(f"Отправлен сигнал для матча: {home_team} vs {away_team}")
 
     except Exception as e:
-        # Логируем только реальные критические сбои, скрывая пустые ответы
-        pass
+        logging.error(f"Ошибка во время сканирования матчей: {e}")
 
 if __name__ == "__main__":
-    logging.info("Инициализация веб-сервера...")
+    logging.info("Инициализация веб-сервера Keep-Alive...")
     keep_alive()
     
-    logging.info("Бот запущен и работает в штатном режиме...")
-    send_telegram_message("🚀 <b>Бот запущен и переведен на стабильный поток данных!</b>")
+    logging.info("Бот запущен. Пробуем отправить стартовое сообщение в Telegram...")
+    
+    # Жесткая проверка связи со стартовым уведомлением
+    startup_success = send_telegram_message("🚀 <b>Бот успешно запущен, переподключен и начал работу!</b>")
+    if startup_success:
+        logging.info("Стартовое сообщение успешно доставлено в чат.")
+    else:
+        logging.error("ВНИМАНИЕ: Стартовое сообщение НЕ ушло! Проверь TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID в настройках Render.")
     
     while True:
         scan_live_matches()
+        logging.info("Пауза цикла 60 секунд...")
         time.sleep(60)
