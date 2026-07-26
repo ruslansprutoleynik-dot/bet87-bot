@@ -5,19 +5,21 @@ import requests
 from flask import Flask
 from threading import Thread
 
+# Настройка логов
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-app = Flask('')
+app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Bot is active and running 24/7!"
+    return "Bot is active and running 24/7!", 200
 
 def run_flask():
-    app.run(host='0.0.0.0', port=10000)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
 
 def keep_alive():
     t = Thread(target=run_flask)
@@ -51,11 +53,33 @@ def check_matches_loop():
     while True:
         try:
             current_time = time.strftime('%H:%M:%S', time.localtime())
-            logging.info(f"[{current_time}] Проверка активных матчей (диапазон 77-87 мин)...")
+            logging.info(f"[{current_time}] Проверка активных матчей на угловые (диапазон 77-87 мин)...")
             
             match_found = False
             match_info = ""
             
             if match_found:
-                alert_text = f"🚨 <b>ВНИМАНИЕ! МАТЧ ПОДХОДИТ ПОД СТРАТЕГИЮ!</b>\n\n{match_info}"
-                send_telegram_message(alert
+                alert_text = (
+                    "🚨 <b>ВНИМАНИЕ! МАТЧ ПОДХОДИТ ПОД СТРАТЕГИЮ НА УГЛОВЫЕ!</b>\n\n"
+                    f"{match_info}"
+                )
+                send_telegram_message(alert_text)
+
+        except requests.exceptions.Timeout:
+            logging.warning("Предупреждение: Сервер статистики не ответил вовремя (таймаут). Идем дальше...")
+        except Exception as e:
+            logging.error(f"Ошибка в цикле сканирования: {e}")
+
+        time.sleep(60)
+
+if __name__ == "__main__":
+    logging.info("Запуск веб-сервера для удержания бодрствования (KeepAlive)...")
+    keep_alive()
+    
+    start_msg = (
+        "🟢 <b>Бот на угловые успешно запущен и активирован!</b> "
+        "Мониторинг матчей (77-87 мин) работает в фоновом режиме."
+    )
+    send_telegram_message(start_msg)
+    
+    check_matches_loop()
