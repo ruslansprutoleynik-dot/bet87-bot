@@ -10,9 +10,12 @@ TELEGRAM_BOT_TOKEN = "8948155468:AAFoyqkqdzcSa7P8R2waWwkfTskmL86SRxc"
 TELEGRAM_CHAT_ID = "435685451"
 FOOTBALL_DATA_TOKEN = "dc8ff1e7f71644119a005fab09e4964c"
 
+BOT_URL = "https://bet87-bot.onrender.com"
+
 MIN_MINUTE = 77
 MAX_MINUTE = 87
 CHECK_INTERVAL = 30
+PING_INTERVAL = 240
 
 BLACKLIST_KEYWORDS = [
     "women", "woman", "female", "w ", " w/",
@@ -41,10 +44,11 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 sent_matches = set()
+last_ping_time = 0
 
 @app.route('/')
 def home():
-    return "Corners Bot is alive and monitoring!", 200
+    return "Corners Bot is alive!", 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -53,6 +57,17 @@ def run_flask():
 def keep_alive():
     t = Thread(target=run_flask, daemon=True)
     t.start()
+
+def self_ping():
+    global last_ping_time
+    now = time.time()
+    if now - last_ping_time >= PING_INTERVAL:
+        try:
+            requests.get(BOT_URL, timeout=10)
+            logger.info("Self-ping OK")
+            last_ping_time = now
+        except Exception as e:
+            logger.warning(f"Self-ping failed: {e}")
 
 def send_telegram(text: str):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -84,17 +99,17 @@ def get_live_matches():
     try:
         r = requests.get(url, headers=headers, params=params, timeout=15)
         if r.status_code != 200:
-            logger.warning(f"API status {r.status_code}: {r.text[:200]}")
+            logger.warning(f"API status {r.status_code}")
             return []
         data = r.json()
         return data.get("matches", [])
     except Exception as e:
-        logger.error(f"Ошибка запроса к API: {e}")
+        logger.error(f"API error: {e}")
         return []
 
 def check_matches():
     matches = get_live_matches()
-    logger.info(f"Найдено live-матчей: {len(matches)}")
+    logger.info(f"Live matches found: {len(matches)}")
 
     for match in matches:
         try:
@@ -141,25 +156,26 @@ def check_matches():
 
             send_telegram(msg)
             sent_matches.add(match_id)
-            logger.info(f"СИГНАЛ ОТПРАВЛЕН: {home_team} {home_score}:{away_score} {away_team} ({minute}')")
+            logger.info(f"SIGNAL SENT: {home_team} {home_score}:{away_score} {away_team}")
 
         except Exception as e:
-            logger.error(f"Ошибка обработки матча: {e}")
+            logger.error(f"Match error: {e}")
 
 def main_loop():
-    logger.info("Цикл мониторинга запущен")
+    logger.info("Monitoring loop started")
     while True:
         try:
             check_matches()
+            self_ping()
         except Exception as e:
-            logger.error(f"Ошибка в главном цикле: {e}")
+            logger.error(f"Loop error: {e}")
         time.sleep(CHECK_INTERVAL)
 
 if __name__ == "__main__":
-    logger.info("Запуск бота...")
+    logger.info("Starting bot...")
     keep_alive()
 
-    start_msg = (
-        "🟢 <b>Бот на угловые запущен!</b>\n"
-        f"Мониторинг матчей {MIN_MINUTE}–{MAX_MINUTE} минута\n"
-        "Нужные счета: разница
+    start_msg = "🟢 Бот на угловые запущен! Мониторинг 77-87 минута. Самопинг активен."
+    send_telegram(start_msg)
+
+    main_loop()
