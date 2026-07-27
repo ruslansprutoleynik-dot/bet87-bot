@@ -1,4 +1,4 @@
-import os
+im os
 import time
 import logging
 import requests
@@ -68,18 +68,4 @@ def check_matches_loop():
         except requests.exceptions.Timeout:
             logging.warning("Предупреждение: Сервер статистики не ответил вовремя (таймаут). Идем дальше...")
         except Exception as e:
-            logging.error(f"Ошибка в цикле сканирования: {e}")
-
-        time.sleep(60)
-
-if __name__ == "__main__":
-    logging.info("Запуск веб-сервера для удержания бодрствования (KeepAlive)...")
-    keep_alive()
-    
-    start_msg = (
-        "🟢 <b>Бот на угловые успешно запущен и активирован!</b> "
-        "Мониторинг матчей (77-87 мин) работает в фоновом режиме."
-    )
-    send_telegram_message(start_msg)
-    
-    check_matches_loop()
+            logging.error(f"Ошибка
