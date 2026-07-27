@@ -26,12 +26,12 @@ def keep_alive():
     t.daemon = True
     t.start()
 
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+TELEGRAM_BOT_TOKEN = "8948155468:AAFoyqkqdzcSa7P8R2waWwkfTskmL86SRxc"
+TELEGRAM_CHAT_ID = "435685451"
 
 def send_telegram_message(text):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        logging.error("Токен или Chat ID Telegram не заданы в переменных окружения!")
+        logging.error("Токен или Chat ID Telegram не заданы!")
         return
     
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
