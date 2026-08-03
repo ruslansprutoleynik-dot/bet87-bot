@@ -1,3 +1,8 @@
+# ====================================
+# UNIVERSAL SPORTS MONITOR
+# Full version with Telegram control
+# ====================================
+
 import os
 import time
 import logging
@@ -5,71 +10,92 @@ import requests
 from flask import Flask
 from threading import Thread
 
-# ====================== НАСТРОЙКИ ======================
+# ---------- TELEGRAM ----------
 TELEGRAM_BOT_TOKEN = "8948155468:AAFoyqkqdzcSa7P8R2waWwkfTskmL86SRxc"
 TELEGRAM_CHAT_ID = "435685451"
+
+# ---------- FOOTBALL API ----------
 FOOTBALL_DATA_TOKEN = "dc8ff1e7f71644119a005fab09e4964c"
 
+# ---------- SERVER ----------
 BOT_URL = "https://bet87-bot.onrender.com"
 
-MIN_MINUTE = 77
-MAX_MINUTE = 87
+# ---------- SETTINGS ----------
 CHECK_INTERVAL = 30
 PING_INTERVAL = 240
+REQUEST_TIMEOUT = 15
+MIN_MINUTE = 77
+MAX_MINUTE = 87
 
-BLACKLIST_KEYWORDS = [
-    "women", "woman", "female", "w ", " w/",
-    "u19", "u20", "u21", "u23", "youth", "junior", "reserve", "reserves",
-    "friendly", "friendlies", "cup", "copa", "coupe", "pokal", "trophy",
-    "qualification", "qualifiers", "play-off", "playoff"
+# ---------- TOP COMPETITIONS ----------
+TOP_COMPETITIONS = {
+    "Premier League",
+    "La Liga",
+    "Serie A",
+    "Bundesliga",
+    "Ligue 1",
+    "Primeira Liga",
+    "Eredivisie",
+    "UEFA Champions League",
+    "UEFA Europa League",
+    "UEFA Conference League",
+    "FIFA World Cup",
+    "European Championship"
+}
+
+# ---------- BLACKLIST ----------
+BLACKLIST = [
+    "women", "woman", "female",
+    "u17", "u18", "u19", "u20", "u21", "u23",
+    "reserve", "reserves",
+    "friendly", "friendlies",
+    "cup", "copa", "coupe", "pokal",
+    "qualification", "qualifier",
+    "playoff", "play-off"
 ]
 
-ALLOWED_SCORES = {
-    (1, 0), (0, 1),
-    (2, 0), (0, 2),
-    (2, 1), (1, 2),
-    (3, 2), (2, 3),
-    (4, 3), (3, 4),
-    (5, 4), (4, 5),
-    (6, 5), (5, 6),
-    (7, 6), (6, 7),
-}
-# =======================================================
+# ---------- STATE ----------
+class ServiceState:
+    def __init__(self):
+        self.running = True
 
+    def pause(self):
+        self.running = False
+
+    def resume(self):
+        self.running = True
+
+    def status(self):
+        return "RUNNING" if self.running else "PAUSED"
+
+state = ServiceState()
+sent_matches = set()
+last_ping = 0
+last_update_id = 0
+
+# ---------- LOGGING ----------
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format="%(asctime)s | %(levelname)s | %(message)s"
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("SPORTS_MONITOR")
 
+# ---------- FLASK ----------
 app = Flask(__name__)
-sent_matches = set()
-last_ping_time = 0
 
-@app.route('/')
+@app.route("/")
 def home():
-    return "Corners Bot is alive!", 200
+    return "Universal Sports Monitor is alive", 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 def keep_alive():
-    t = Thread(target=run_flask, daemon=True)
-    t.start()
+    Thread(target=run_flask, daemon=True).start()
 
-def self_ping():
-    global last_ping_time
-    now = time.time()
-    if now - last_ping_time >= PING_INTERVAL:
-        try:
-            requests.get(BOT_URL, timeout=10)
-            logger.info("Self-ping OK")
-            last_ping_time = now
-        except Exception as e:
-            logger.warning(f"Self-ping failed: {e}")
-
-def send_telegram(text: str):
+# ---------- TELEGRAM ----------
+def send_telegram(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
@@ -78,54 +104,114 @@ def send_telegram(text: str):
         "disable_web_page_preview": True
     }
     try:
-        r = requests.post(url, json=payload, timeout=10)
+        r = requests.post(url, json=payload, timeout=15)
         if r.status_code != 200:
             logger.error(f"Telegram error: {r.text}")
     except Exception as e:
-        logger.error(f"Telegram exception: {e}")
+        logger.exception(e)
 
-def is_blacklisted(competition_name: str) -> bool:
-    name = competition_name.lower()
-    return any(kw in name for kw in BLACKLIST_KEYWORDS)
+def self_ping():
+    global last_ping
+    now = time.time()
+    if now - last_ping < PING_INTERVAL:
+        return
+    try:
+        requests.get(BOT_URL, timeout=10)
+        last_ping = now
+        logger.info("Self-ping OK")
+    except Exception as e:
+        logger.warning(f"Self-ping failed: {e}")
 
-def is_allowed_score(home: int, away: int) -> bool:
-    return (home, away) in ALLOWED_SCORES
+# ---------- COMMANDS ----------
+def process_commands():
+    global last_update_id
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
+    params = {
+        "offset": last_update_id + 1,
+        "timeout": 1
+    }
+    try:
+        r = requests.get(url, params=params, timeout=10)
+        if r.status_code != 200:
+            return
+        data = r.json()
+        for update in data.get("result", []):
+            last_update_id = update["update_id"]
+            message = update.get("message", {})
+            text = message.get("text", "").strip().lower()
+            chat_id = str(message.get("chat", {}).get("id", ""))
 
+            if chat_id != TELEGRAM_CHAT_ID:
+                continue
+
+            if text in ["/start", "/run", "старт", "запуск"]:
+                state.resume()
+                send_telegram("🟢 Мониторинг <b>включён</b>")
+                logger.info("Service RESUMED by command")
+
+            elif text in ["/stop", "/pause", "стоп", "пауза"]:
+                state.pause()
+                send_telegram("🔴 Мониторинг <b>остановлен</b>")
+                logger.info("Service PAUSED by command")
+
+            elif text in ["/status", "статус"]:
+                status = state.status()
+                send_telegram(f"📊 Статус: <b>{status}</b>")
+
+    except Exception as e:
+        logger.exception(e)
+
+def commands_loop():
+    while True:
+        process_commands()
+        time.sleep(3)
+
+# ---------- API + FILTERS ----------
 def get_live_matches():
     url = "https://api.football-data.org/v4/matches"
     headers = {"X-Auth-Token": FOOTBALL_DATA_TOKEN}
     params = {"status": "IN_PLAY,PAUSED"}
-
     try:
-        r = requests.get(url, headers=headers, params=params, timeout=15)
+        r = requests.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT)
         if r.status_code != 200:
-            logger.warning(f"API status {r.status_code}")
+            logger.warning(f"API status: {r.status_code}")
             return []
-        data = r.json()
-        return data.get("matches", [])
+        return r.json().get("matches", [])
     except Exception as e:
-        logger.error(f"API error: {e}")
+        logger.exception(e)
         return []
+
+def is_blacklisted(name):
+    if not name:
+        return True
+    lower = name.lower()
+    return any(word in lower for word in BLACKLIST)
+
+def is_top_competition(name):
+    return name in TOP_COMPETITIONS if name else False
 
 def check_matches():
     matches = get_live_matches()
-    logger.info(f"Live matches found: {len(matches)}")
+    logger.info(f"Live matches: {len(matches)}")
 
     for match in matches:
         try:
-            match_id = match["id"]
-            if match_id in sent_matches:
+            match_id = match.get("id")
+            if not match_id or match_id in sent_matches:
                 continue
 
             minute = match.get("minute")
             if minute is None:
                 continue
-            try:
-                minute = int(minute)
-            except:
-                continue
+            minute = int(minute)
 
             if not (MIN_MINUTE <= minute <= MAX_MINUTE):
+                continue
+
+            competition = match.get("competition", {})
+            comp_name = competition.get("name", "")
+
+            if is_blacklisted(comp_name) or not is_top_competition(comp_name):
                 continue
 
             score = match.get("score", {}).get("fullTime", {})
@@ -135,47 +221,52 @@ def check_matches():
             if home_score is None or away_score is None:
                 continue
 
-            if not is_allowed_score(home_score, away_score):
-                continue
-
-            competition = match.get("competition", {})
-            comp_name = competition.get("name", "Unknown")
-            if is_blacklisted(comp_name):
+            if abs(home_score - away_score) != 1:
                 continue
 
             home_team = match["homeTeam"]["name"]
             away_team = match["awayTeam"]["name"]
 
             msg = (
-                f"🚨 <b>СИГНАЛ НА УГЛОВЫЕ!</b>\n\n"
-                f"⚽ <b>{home_team}</b> {home_score}:{away_score} <b>{away_team}</b>\n"
-                f"⏱ Минута: <b>{minute}'</b>\n"
-                f"🏆 Лига: {comp_name}\n\n"
-                f"💰 Можно ставить тотал угловых больше 0.5 от текущего"
+                f"⚽ <b>СИГНАЛ НА УГЛОВЫЕ</b>\n\n"
+                f"🏆 {comp_name}\n"
+                f"⚔️ <b>{home_team}</b> {home_score}:{away_score} <b>{away_team}</b>\n"
+                f"⏱ Минута: <b>{minute}'</b>\n\n"
+                f"💰 Можно ставить тотал угловых больше 0.5"
             )
 
             send_telegram(msg)
             sent_matches.add(match_id)
-            logger.info(f"SIGNAL SENT: {home_team} {home_score}:{away_score} {away_team}")
+            logger.info(f"[SIGNAL] {home_team} {home_score}:{away_score} {away_team} | {minute}' | {comp_name}")
 
         except Exception as e:
-            logger.error(f"Match error: {e}")
+            logger.exception(e)
 
-def main_loop():
-    logger.info("Monitoring loop started")
+# ---------- MAIN ----------
+def main():
+    logger.info("Starting Universal Sports Monitor...")
+    keep_alive()
+    time.sleep(2)
+
+    Thread(target=commands_loop, daemon=True).start()
+
+    send_telegram(
+        "🟢 <b>Бот запущен</b>\n\n"
+        "Команды:\n"
+        "/start — включить мониторинг\n"
+        "/stop — остановить\n"
+        "/status — статус"
+    )
+
     while True:
         try:
-            check_matches()
-            self_ping()
+            process_commands()
+            if state.running:
+                check_matches()
+                self_ping()
         except Exception as e:
-            logger.error(f"Loop error: {e}")
+            logger.exception(e)
         time.sleep(CHECK_INTERVAL)
 
 if __name__ == "__main__":
-    logger.info("Starting bot...")
-    keep_alive()
-
-    start_msg = "🟢 Бот на угловые запущен! Мониторинг 77-87 минута. Самопинг активен."
-    send_telegram(start_msg)
-
-    main_loop()
+    main()
