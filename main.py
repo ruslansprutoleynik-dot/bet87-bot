@@ -1,6 +1,6 @@
 # =====================================================================
 # UNIVERSAL SPORTS MONITOR (FOOTBALL + HOCKEY)
-# Unified version with Telegram control, Flask self-ping, and multi-threading
+# Точные токены со скриншота BotFather
 # =====================================================================
 
 import os
@@ -11,15 +11,15 @@ from flask import Flask
 from threading import Thread
 
 # ---------- CREDENTIALS & TOKENS ----------
-# Берем из переменных окружения Render или используем дефолтные значения
-FOOTBALL_BOT_TOKEN = os.environ.get("FOOTBALL_TELEGRAM_BOT_TOKEN", "8948155468:AAFoyqkndzcSa7P8R2waWwkfTskmL86SRxc")
-FOOTBALL_DATA_TOKEN = os.environ.get("FOOTBALL_DATA_TOKEN", "dc8ff1e7f71644119a005fab09e4964c")
+# Токены взяты точно из BotFather (image_7.png)
+FOOTBALL_BOT_TOKEN = "8948155468:AAEH8qQndyRRf0WYpENs3pfaot39wNaoEKc"
+FOOTBALL_DATA_TOKEN = "dc8ff1e7f71644119a005fab09e4964c"
 
-HOCKEY_BOT_TOKEN = os.environ.get("HOCKEY_TELEGRAM_BOT_TOKEN", "896584199:AAHWEsMnwczCRdQZzOÚ5dfYg7dLZTes-e_0")
-API_SPORTS_KEY = os.environ.get("HOCKEY_API_KEY", "c524baddeef5bcc8f56c301063b30ac5")
+HOCKEY_BOT_TOKEN = "8965841999:AAHWEsMnwczcRDqZz0U5dfYg7dLZTes-e_0"
+API_SPORTS_KEY = "c524baddeef5bcc8f56c301063b30ac5"
 
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "435685451")
-BOT_URL = os.environ.get("BOT_URL", "https://bet87-bot.onrender.com")
+TELEGRAM_CHAT_ID = "435685451"
+BOT_URL = "https://bet87-bot.onrender.com"
 REQUEST_TIMEOUT = 15
 
 # ---------- FOOTBALL SETTINGS ----------
@@ -54,7 +54,7 @@ FOOTBALL_BLACKLIST = [
 ]
 
 # ---------- HOCKEY SETTINGS ----------
-HOCKEY_CHECK_INTERVAL = 270  # 4.5 минуты
+HOCKEY_CHECK_INTERVAL = 270
 
 # ---------- STATES ----------
 class ServiceState:
@@ -92,7 +92,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "Universal Sports Monitor is alive", 200
+    return "Universal Sports Monitor Final Tokens is alive", 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -151,11 +151,9 @@ def process_football_commands():
             if text in ["/start", "/run", "старт", "запуск"]:
                 football_state.resume()
                 send_telegram(FOOTBALL_BOT_TOKEN, "🟢 Футбольный мониторинг <b>включён</b>")
-                logger.info("Football service RESUMED")
             elif text in ["/stop", "/pause", "стоп", "пауза"]:
                 football_state.pause()
                 send_telegram(FOOTBALL_BOT_TOKEN, "🔴 Футбольный мониторинг <b>остановлен</b>")
-                logger.info("Football service PAUSED")
             elif text in ["/status", "статус"]:
                 send_telegram(FOOTBALL_BOT_TOKEN, f"📊 Статус футбола: <b>{football_state.status()}</b>")
     except Exception as e:
@@ -182,11 +180,9 @@ def process_hockey_commands():
             if text in ["/start", "/run", "старт", "запуск"]:
                 hockey_state.resume()
                 send_telegram(HOCKEY_BOT_TOKEN, "🟢 Хоккейный мониторинг <b>включён</b>")
-                logger.info("Hockey service RESUMED")
             elif text in ["/stop", "/pause", "стоп", "пауза"]:
                 hockey_state.pause()
                 send_telegram(HOCKEY_BOT_TOKEN, "🔴 Хоккейный мониторинг <b>остановлен</b>")
-                logger.info("Hockey service PAUSED")
             elif text in ["/status", "статус"]:
                 send_telegram(HOCKEY_BOT_TOKEN, f"📊 Статус хоккея: <b>{hockey_state.status()}</b>")
     except Exception as e:
@@ -386,7 +382,7 @@ def hockey_monitor_loop():
 
 # ---------- MAIN ----------
 def main():
-    logger.info("Starting Universal Sports Monitor (Football + Hockey)...")
+    logger.info("Starting Universal Sports Monitor Final Tokens (Football + Hockey)...")
     keep_alive()
     time.sleep(2)
 
