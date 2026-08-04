@@ -11,17 +11,15 @@ from flask import Flask
 from threading import Thread
 
 # ---------- CREDENTIALS & TOKENS ----------
-# Football Bot & API
-FOOTBALL_BOT_TOKEN = "8948155468:AAFoyqkndzcSa7P8R2waWwkfTskmL86SRxc"
-FOOTBALL_DATA_TOKEN = "dc8ff1e7f71644119a005fab09e4964c"
+# Берем из переменных окружения Render или используем дефолтные значения
+FOOTBALL_BOT_TOKEN = os.environ.get("FOOTBALL_TELEGRAM_BOT_TOKEN", "8948155468:AAFoyqkndzcSa7P8R2waWwkfTskmL86SRxc")
+FOOTBALL_DATA_TOKEN = os.environ.get("FOOTBALL_DATA_TOKEN", "dc8ff1e7f71644119a005fab09e4964c")
 
-# Hockey Bot & API
-HOCKEY_BOT_TOKEN = "8965841999:AAHWEsMnwczcRDqZz0U5dfYg7dLZTes-e_0"
-API_SPORTS_KEY = "c524baddeef5bcc8f56c301063b30ac5"
+HOCKEY_BOT_TOKEN = os.environ.get("HOCKEY_TELEGRAM_BOT_TOKEN", "896584199:AAHWEsMnwczCRdQZzOÚ5dfYg7dLZTes-e_0")
+API_SPORTS_KEY = os.environ.get("HOCKEY_API_KEY", "c524baddeef5bcc8f56c301063b30ac5")
 
-# Shared Settings
-TELEGRAM_CHAT_ID = "435685451"
-BOT_URL = "https://bet87-bot.onrender.com"
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "435685451")
+BOT_URL = os.environ.get("BOT_URL", "https://bet87-bot.onrender.com")
 REQUEST_TIMEOUT = 15
 
 # ---------- FOOTBALL SETTINGS ----------
@@ -392,10 +390,8 @@ def main():
     keep_alive()
     time.sleep(2)
 
-    # Запускаем фоновые потоки для команд и мониторинга каждого вида спорта независимо
     Thread(target=football_commands_loop, daemon=True).start()
     Thread(target=hockey_commands_loop, daemon=True).start()
-
     Thread(target=hockey_monitor_loop, daemon=True).start()
 
     send_telegram(
@@ -409,7 +405,6 @@ def main():
         "Оба потока работают параллельно."
     )
 
-    # Главный поток крутит футбол
     football_monitor_loop()
 
 if __name__ == "__main__":
