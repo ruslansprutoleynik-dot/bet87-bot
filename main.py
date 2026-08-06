@@ -11,11 +11,11 @@ from flask import Flask
 from threading import Thread
 
 # ---------- CREDENTIALS & TOKENS ----------
-# Токены взяты точно из BotFather (image_7.png)
 FOOTBALL_BOT_TOKEN = "8948155468:AAEH8qQndyRRf0WYpENs3pfaot39wNaoEKc"
 FOOTBALL_DATA_TOKEN = "dc8ff1e7f71644119a005fab09e4964c"
 
-HOCKEY_BOT_TOKEN = "8965841999:AAHWEsMnwczcRDqZz0U5dfYg7dLZTes-e_0"
+# Вставлен новый рабочий токен хоккея, проверенный через getMe!
+HOCKEY_BOT_TOKEN = "8965841999:AAGBOg32o6gfR1npXyoR3WkPQWUpW-PUmDM"
 API_SPORTS_KEY = "c524baddeef5bcc8f56c301063b30ac5"
 
 TELEGRAM_CHAT_ID = "435685451"
